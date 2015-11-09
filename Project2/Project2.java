@@ -166,7 +166,7 @@ int [][] copyArray2D(int [][] array){
 public void menu(){
     System.out.println("Darken:d  Lighten:l  Smooth:sm/sa/sg Sharpen:sh/sl");
     System.out.println("EdgeDetect:ek/el Thin:t Undo:z contrast:n/m Revert:o");
-    System.out.println("ReduceNoise:rn Exit:0");
+    System.out.println("ReduceNoise:rn OriginalImage:o Save:s Exit:0");
 
   
 
