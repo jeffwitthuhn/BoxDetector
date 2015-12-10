@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.awt.event.WindowEvent;
 import javax.imageio.*;
 import java.io.*;
+import java.awt.Font;
+
 
  
 
@@ -45,10 +47,29 @@ public class Project2 extends Frame{
  	Dimension d;
  	int margin;
  	Graphics gImage;
+ 	int imageCycle;
     Thread thr = new Thread(this);
     Scanner scanner;
     Frame window; 
  	boolean ready;
+ 	int[][] regions;
+ 	int numRegions;
+ 	boolean[][] connectedRegions;
+ 	ArrayList<Integer> regionVotes;
+ 	ArrayList<Integer> verticalCount;
+ 	ArrayList<Integer> horizontalCount;
+ 	ArrayList<Integer> regionDensity;
+ 	ArrayList<int[]> minmax;//min x,y max x,y
+ 	ArrayList<Boolean> goodRegions;
+ 	ArrayList<Boolean> connected;
+ 	ArrayList<Boolean> vertical;
+ 	ArrayList<Boolean> horizontal;
+ 	ArrayList<Boolean> tlbr;
+ 	ArrayList<Boolean> trbl;
+
+ 	boolean regionsCalculated;
+ 	int [][] huffAccumulator;
+ 	boolean huff;
  	BufferedImage image,image2;
  	ArrayList<int[][]> saves;
  	int clickCount;
@@ -80,6 +101,8 @@ public class Project2 extends Frame{
 						command=scanner.nextLine();
 					
 					    switch (command){
+					    	case "c": cycle();
+					    		break;
 					    	case "d": saves.add(copyArray2D(array2D));darkenArrayImage();
 					    		break;
 					    	case "l":saves.add(copyArray2D(array2D));lightenArrayImage();
@@ -94,25 +117,59 @@ public class Project2 extends Frame{
 					    		break;
 					    	case "sl":saves.add(copyArray2D(array2D));sharpenLaplacian(1);
 					    		break;
-					    	case "sl2":saves.add(copyArray2D(array2D));sharpenLaplacian(2f);
+					    	case "sl2":saves.add(copyArray2D(array2D));sharpenLaplacian(2);
 					    		break;
 					    	case "save": save();
 					    		break;
 					    	case "ek":saves.add(copyArray2D(array2D));detectEdgeKirsch(5);
 					    		break;
-					    	case "el":saves.add(copyArray2D(array2D));detectEdgeLaplacian(5,1);
+					    	case "eko":saves.add(copyArray2D(array2D));overlayEdges(5);
 					    		break;
-					    	case "el2":saves.add(copyArray2D(array2D));detectEdgeLaplacian(5,2);
+					    	case "ekt":saves.add(copyArray2D(array2D));overlayThinnedEdges(5);
+					    		break;	
+					    	case "el":saves.add(copyArray2D(array2D));detectEdgeLaplacian(7,1);
 					    		break;
-					    	case "m": saves.add(copyArray2D(array2D));increaseContrast(100,10);
+					    	case "el2":saves.add(copyArray2D(array2D));detectEdgeLaplacian(7,2);
 					    		break;
-					    	case "n": saves.add(copyArray2D(array2D));decreaseContrast(100,10);
+					    	case "m": saves.add(copyArray2D(array2D));increaseContrast(200,5);
+					    		break;
+					    	case "n": saves.add(copyArray2D(array2D));decreaseContrast(200,5);
 					    		break;
 					    	case "t":saves.add(copyArray2D(array2D));thin();
 					    		break;
 					    	case "rn":saves.add(copyArray2D(array2D));ReduceNoise(2);
 					    		break;
+					    	case "flip":saves.add(copyArray2D(array2D));invertColor();
+					    		break;
+					    	case "rn3":saves.add(copyArray2D(array2D));ReduceNoise(3);
+					    		break;
+					    	case "rn4":saves.add(copyArray2D(array2D));ReduceNoise(4);
+					    		break;
+					    	case "h":saves.add(copyArray2D(array2D));HoughTransform();
+					    		break;
+					    	case "sf": saves.add(copyArray2D(array2D));smartFill();
+					    		break; 
+					    	case "f":
+					    			saves.add(copyArray2D(array2D));
+					    		   	sharpenLaplacian(1);
+					    		   	increaseContrast(200,5);
+					    		   	regions=detectRegions(15);
+					    			calcVotes();
+					    			regionsCalculated=true;
+					    			revertToOriginal();
+					    			image2=createResizedCopy(image2,image2.getWidth(), image2.getHeight(),true);
+
+					    	//case "f": saves.add(copyArray2D(array2D));Fill();
+					    		break; 
+					    	case "reg":regions=detectRegions(15);
+					    			//	calcVotes();
+					    				regionsCalculated=true;
+					    		break;
+					    	case "resize": saves.add(copyArray2D(array2D));resize();
+					    		break;
 					    	case "z":undo();
+					    		break;
+					    	case "open": open();
 					    		break;
 					    	case "o": saves.add(copyArray2D(array2D));revertToOriginal();
 					    		break;
@@ -134,8 +191,10 @@ public class Project2 extends Frame{
  		window=_window;
  		margin=_margin;
  		ready=false;
+ 		imageCycle=0;
  		clickCount=0; 
  		filename="im1-c.bmp";
+ 		//m m m sh sm sg sg
  		scanner = new Scanner(System.in);
  		saves = new ArrayList<int[][]>();
 
@@ -150,13 +209,19 @@ public class Project2 extends Frame{
 
 
  	}
+int [] cpyarr(int[] ar,int size){
+	int[] temp= new int[size];
+	for(int i=0; i<size; i++)
+		temp[i]=ar[i];
+	return temp;
+}
 int [][] copyArray2D(int [][] array){
 	int[][] temp;
-    temp = new int[image.getWidth()][image.getHeight()]; //*
+    temp = new int[image2.getWidth()][image2.getHeight()]; //*
 
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	    for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 	        	temp[xPixel][yPixel] = array[xPixel][yPixel]; 
 	        }
@@ -166,10 +231,610 @@ int [][] copyArray2D(int [][] array){
 public void menu(){
     System.out.println("Darken:d  Lighten:l  Smooth:sm/sa/sg Sharpen:sh/sl");
     System.out.println("EdgeDetect:ek/el Thin:t Undo:z contrast:n/m Revert:o");
-    System.out.println("ReduceNoise:rn OriginalImage:o Save:s Exit:0");
+    System.out.println("ReduceNoise:rn hough:h sfill:sf fill:f Save:s Exit:0");
 
   
 
+}
+public void calcVotes(){
+	//connectedRegions=new boolean[numRegions+1][numRegions+1];
+	int neighborRange=100;
+	int offset1=1;
+	int offset2=3;
+	int offset3=3;
+	int hcount=50;
+	int vcount=50;
+	int columnsthreshhold=20;
+	int rowthreshold=20;
+	verticalCount=new ArrayList<Integer>();
+	horizontalCount=new ArrayList<Integer>();
+	connected=new ArrayList<Boolean>();
+ 	vertical=new ArrayList<Boolean>();
+ 	horizontal=new ArrayList<Boolean>();
+ 	tlbr=new ArrayList<Boolean>();
+ 	trbl=new ArrayList<Boolean>();
+ 	boolean found1,found2; 
+	for(int r=0; r<=numRegions; r++){
+		verticalCount.add(0);
+		horizontalCount.add(0);
+		regionVotes.add(0);
+		connected.add(false);
+		vertical.add(false);
+		horizontal.add(false);
+		tlbr.add(false);
+		trbl.add(false);
+	}
+	//for(int r=0; r<numRegions; r++)
+		//for(int i=0; i<numRegions;i++)
+		//	connectedRegions[r][i]=false;
+	for(int r=0; r<numRegions; r++){
+		if(!goodRegions.get(r))
+			continue;
+		System.out.println("analyze region: " +r);
+		int topx, topy, leftx, lefty,
+			rightx,righty, bottomx,bottomy;
+		leftx=minmax.get(r)[0]+offset3; lefty=-1;
+		bottomy=minmax.get(r)[1]+offset3;bottomx=-1;
+		rightx=minmax.get(r)[2]-offset3;righty=-1;
+		topy=minmax.get(r)[3]-offset3;topx=-1;
+		hcount=(int)((double)(rightx-leftx)*0.5);
+		vcount=(int)((double)(topy-bottomy)*0.5);
+		columnsthreshhold=(int)((rightx-leftx)/5);
+		rowthreshold=(int)((double)(topy-bottomy)/5);
+		int countRight=0, countLeft=0, countTop=0, countBottom=0;
+		ArrayList<Integer> nearbyRegions=new ArrayList<Integer>();
+		ArrayList<Integer> nearbyRegionsL=new ArrayList<Integer>();
+		ArrayList<Integer> nearbyRegionsR=new ArrayList<Integer>();
+		ArrayList<Integer> nearbyRegionsU=new ArrayList<Integer>();
+		ArrayList<Integer> nearbyRegionsD=new ArrayList<Integer>();
+
+
+
+		for(int i=0;i<numRegions;i++){
+			nearbyRegions.add(0);
+			nearbyRegionsL.add(0);
+			nearbyRegionsR.add(0);
+			nearbyRegionsU.add(0);
+			nearbyRegionsD.add(0);
+
+		}
+		int current, off1,off2,off3,off4;
+		//detect pseudo-corners of "boxes"
+		found1=false;found2=false;
+		for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++){
+			//System.out.println(xPixel+" " +topy);
+			current=regions[xPixel][topy];
+			off1=regions[xPixel][topy+offset1];
+			off2=regions[xPixel][topy+offset2];
+			off3=regions[xPixel][topy-offset1];
+			off4=regions[xPixel][topy-offset2];
+			if(current==r||off1==r||off2==r||off3==r||off4==r){
+				countTop++;
+				if(!found1){
+						topx=xPixel;
+						found1=true;
+					}
+
+			}
+			if(xPixel<=rightx+neighborRange&&xPixel>=leftx-neighborRange){
+				nearbyRegionsU.set(current,nearbyRegions.get(current)+1);
+				if(off1!=current){
+					nearbyRegionsU.set(off1,nearbyRegions.get(off1)+1);
+					if(off2!=off1){
+						nearbyRegionsU.set(off2,nearbyRegions.get(off2)+1);
+						if(off3!=off2){
+							nearbyRegionsU.set(off3,nearbyRegions.get(off3)+1);
+							if(off4!=off3){
+								nearbyRegionsU.set(off4,nearbyRegions.get(off4)+1);
+							}
+						}
+					}
+				}
+				
+			}
+
+			current=regions[xPixel][bottomy];
+			off1=regions[xPixel][bottomy+offset1];
+			off2=regions[xPixel][bottomy+offset2];
+			off3=regions[xPixel][bottomy-offset1];
+			off4=regions[xPixel][bottomy-offset2];
+			if(current==r||off1==r||off2==r||off3==r||off4==r){
+				countBottom++;
+				if(!found2){
+					bottomx=xPixel;
+					found2=true;
+				}
+
+			}
+			if(xPixel<=rightx+neighborRange&&xPixel>=leftx-neighborRange){
+				nearbyRegionsD.set(current,nearbyRegions.get(current)+1);
+				if(off1!=current){
+					nearbyRegionsD.set(off1,nearbyRegions.get(off1)+1);
+					if(off2!=off1){
+						nearbyRegionsD.set(off2,nearbyRegions.get(off2)+1);
+						if(off3!=off2){
+							nearbyRegionsD.set(off3,nearbyRegions.get(off3)+1);
+							if(off4!=off3){
+								nearbyRegionsD.set(off4,nearbyRegions.get(off4)+1);
+							}
+						}
+					}
+				}
+				
+			}
+		}
+		//detect pseudo-corners of "boxes"
+		found1=false;found2=false;
+		for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++){
+			current=regions[leftx][yPixel];
+			off1=regions[leftx+offset1][yPixel];
+			off2=regions[leftx+offset2][yPixel];
+			off3=regions[leftx-offset1][yPixel];
+			off4=regions[leftx-offset2][yPixel];
+			if(current==r||off1==r||off2==r||off3==r||off4==r){
+				countLeft++;
+				lefty=yPixel;
+			}
+			if(yPixel<=topy+neighborRange&&yPixel>=bottomy-neighborRange){
+				nearbyRegionsL.set(current,nearbyRegions.get(current)+1);
+				if(off1!=current){
+					nearbyRegionsL.set(off1,nearbyRegions.get(off1)+1);
+					if(off2!=off1){
+						nearbyRegionsL.set(off2,nearbyRegions.get(off2)+1);
+						if(off3!=off2){
+							nearbyRegionsL.set(off3,nearbyRegions.get(off3)+1);
+							if(off4!=off3){
+								nearbyRegionsL.set(off4,nearbyRegions.get(off4)+1);
+							}
+						}
+					}
+				}
+				
+			}
+			current=regions[rightx][yPixel];
+			off1=regions[rightx+offset1][yPixel];
+			off2=regions[rightx+offset2][yPixel];
+			off3=regions[rightx-offset1][yPixel];
+			off4=regions[rightx-offset2][yPixel];
+			if(current==r||off1==r||off2==r||off3==r||off4==r){
+				countRight++;
+				righty=yPixel;
+				}
+			if(yPixel<=topy+neighborRange&&yPixel>=bottomy-neighborRange){
+				nearbyRegionsR.set(current,nearbyRegions.get(current)+1);
+				if(off1!=current){
+					nearbyRegionsR.set(off1,nearbyRegions.get(off1)+1);
+					if(off2!=off1){
+						nearbyRegionsR.set(off2,nearbyRegions.get(off2)+1);
+						if(off3!=off2){
+							nearbyRegionsR.set(off3,nearbyRegions.get(off3)+1);
+							if(off4!=off3){
+								nearbyRegionsR.set(off4,nearbyRegions.get(off4)+1);
+							}
+						}
+					}
+				}
+				
+			}
+
+		}
+		//record regions that are connected
+		//if region has a connected region then it is "more valid"
+		for(int i=0; i<nearbyRegions.size(); i++){
+			if(goodRegions.get(i)){
+				// System.out.println("countTop: "+ countTop
+				// 	+"\ncountBottom:"+countBottom
+				// 	+"\ncountLeft:"+countLeft
+				// 	+"\ncountRight:"+countRight
+				// 	+"\nnbRT:"+nearbyRegionsU.get(i)
+				// 	+"\nnbRB:"+nearbyRegionsD.get(i)
+				// 	+"\nnbRL:"+nearbyRegionsL.get(i)
+				// 	+"\nnbRR:"+nearbyRegionsR.get(i)
+				// 	+"\nnbR:"+nearbyRegions.get(i));
+
+				if(i!=r)
+					if(nearbyRegionsU.get(i)>(min((rightx-leftx),(topy-bottomy))/2) )
+					{
+					//connectedRegions[r][i]=true;
+					connected.set(r,true);
+					regionVotes.set(r,regionVotes.get(r)+1);
+				}
+				if(nearbyRegionsD.get(i)>(min((rightx-leftx),(topy-bottomy))/2) )
+					{
+					//connectedRegions[r][i]=true;
+					connected.set(r,true);
+					regionVotes.set(r,regionVotes.get(r)+1);
+				}
+				if(nearbyRegionsL.get(i)>(min((rightx-leftx),(topy-bottomy))/2) )
+					{
+					//connectedRegions[r][i]=true;
+					connected.set(r,true);
+					regionVotes.set(r,regionVotes.get(r)+1);
+				}
+				if(nearbyRegionsR.get(i)>(min((rightx-leftx),(topy-bottomy))/2) )
+					{
+					//connectedRegions[r][i]=true;
+					connected.set(r,true);
+					regionVotes.set(r,regionVotes.get(r)+1);
+				}
+			}
+		}
+		for(int i=leftx; i<=rightx; i++){
+			boolean done=false;
+			int count=0;
+			for(int j=0; j<image2.getHeight()&&!done;j++){
+				if(regions[i][j]==r)
+					count++;
+				else count=0;
+				if(count>vcount){
+					verticalCount.set(r,verticalCount.get(r)+1);
+					done=true;
+				}
+		}
+	}
+		for(int i=0; i<image2.getWidth(); i++){
+			boolean done=false;
+			int count=0;
+			for(int j=bottomy; j<=topy&&!done;j++){
+				//if(r==5523)
+				//System.out.print(count +" ");
+
+				if(regions[i][j]==r)
+					count++;
+				else count=0;
+				if(count>hcount){
+					horizontalCount.set(r,horizontalCount.get(r)+1);
+					done=true;
+				}
+		}
+	}
+				if(verticalCount.get(r)>columnsthreshhold){
+						regionVotes.set(r,regionVotes.get(r)+2);
+						System.out.println("columnsthreshhold");
+
+					}
+					System.out.println(verticalCount.get(r)+" "+columnsthreshhold+" "+vcount+"\n"
+						+horizontalCount.get(r)+" "+rowthreshold+" "+hcount);
+
+				if(horizontalCount.get(r)>rowthreshold){
+						regionVotes.set(r,regionVotes.get(r)+2);
+						System.out.println("rowthreshold");
+
+					}
+
+				if(countRight>vcount&&countLeft>vcount){//vertical pair
+						regionVotes.set(r,regionVotes.get(r)+1);
+						vertical.set(r,true);
+					}
+				if(countBottom>hcount&&countTop>hcount){//horizontal pair
+						regionVotes.set(r,regionVotes.get(r)+1);
+						horizontal.set(r,true);
+					}
+				int c1=(int)pow((topx-leftx),2)+(int)pow((topy-lefty),2);
+				int c2=(int)pow((bottomx-rightx),2)+(int)pow((bottomy-righty),2);
+				c1=(int)sqrt(c1);
+				c2=(int)sqrt(c2);
+				System.out.println(max((rightx-leftx),(topy-bottomy))+"\n");
+
+				if(abs(c1-c2)<(max((rightx-leftx),(topy-bottomy)))/5){//two sides same length
+						tlbr.set(r,true);
+						regionVotes.set(r,regionVotes.get(r)+1);
+					}
+				System.out.println(""+topx+" "+leftx+" "+topy+" "+lefty);
+				System.out.println(""+bottomx+" "+rightx+" "+bottomy+" "+righty);
+
+				System.out.println(""+c1+" "+c2);
+				System.out.println(""+(abs(c1-c2)));
+
+
+				c1=(int)pow((topx-rightx),2)+(int)pow((topy-righty),2);
+				c2=(int)pow((bottomx-leftx),2)+(int)pow((bottomy-lefty),2);
+				c1=(int)sqrt(c1);
+				c2=(int)sqrt(c2);
+				if(abs(c1-c2)<(max((rightx-leftx),(topy-bottomy)))/5){//two sides same length
+						regionVotes.set(r,regionVotes.get(r)+1);
+						trbl.set(r,true);
+					}
+				System.out.println(""+topx+" "+rightx+" "+topy+" "+righty);
+				System.out.println(""+bottomx+" "+leftx+" "+bottomy+" "+lefty);
+
+				System.out.println(""+c1+" "+c2);
+				System.out.println(""+(abs(c1-c2)));
+
+
+				System.out.println("region " +r+": votes:"+regionVotes.get(r)+" connected: "
+					+connected.get(r)+" vertical:"+vertical.get(r)+
+					"\nhorizontal:"+horizontal.get(r)+" TLBR, TRBL:"
+					+tlbr.get(r)+trbl.get(r));
+				System.out.println("");
+
+			
+		
+	}
+
+	
+	int max=0;
+	int count =0;
+
+	for(int i=0; i<regionVotes.size()-1; i++){
+		if(regionVotes.get(i)>max)
+			max=regionVotes.get(i);
+	}
+	System.out.println("max:" +max);
+	for(int i=0; i<regionVotes.size()-1; i++){
+		if(goodRegions.get(i)){
+			if(regionVotes.get(i)==max)
+			System.out.println("boxregion:" +i);
+			else 
+				goodRegions.set(i,!goodRegions.get(i));
+		}
+	}
+
+}
+public int[][] detectRegions(int threshhold){
+
+	//https://www.cs.auckland.ac.nz/courses/compsci773s1c/lectures/ImageProcessing-html/topic3.htm
+	image2=createResizedCopy(image2,image2.getWidth(), image2.getHeight(),true);
+	int[][] temp;
+	int regionNum=1;
+	int count;
+	goodRegions= new ArrayList<Boolean>();
+	minmax= new ArrayList<int[]>();
+	regionDensity=new ArrayList<Integer>();
+	regionDensity.add(1);
+	regionVotes=new ArrayList<Integer>();
+	int[] dummy = new int[1];
+	minmax.add(dummy);
+
+	goodRegions.add(Boolean.FALSE);
+	temp = new int[image2.getWidth()][image2.getHeight()];
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+	    {
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+	        {
+	        	temp[xPixel][yPixel] = 0; 
+	        }
+	    }
+
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+	    {
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+	        {
+	        	if(temp[xPixel][yPixel] == 0){
+	        		//System.out.println("grow region at: " +xPixel+" "+yPixel);
+	        		count=regionGrow(temp,threshhold,regionNum, xPixel,yPixel);
+	        		// if(count>3000)
+	        		// 	goodRegions.add(Boolean.TRUE);
+	        		// else
+	        		// 	goodRegions.add(Boolean.FALSE);
+	        			
+	        		regionNum++;
+	        	} 
+	        }
+	    }
+	System.out.println("numRegions: " +regionNum);
+
+	numRegions=regionNum;
+
+	return temp;
+}
+public int regionGrow(int[][] temp, int threshhold, int regionNum,int x, int y){
+	Color color1 = new Color(array2D[x][y]);
+	Color color2 = new Color(2);
+	int[] minmaxarray= new int[4];
+
+	minmaxarray[0]=minmaxarray[2]=x;
+	minmaxarray[1]=minmaxarray[3]=y;
+	int average = color1.getGreen();
+	int averageTotal=average;
+	int averageCount=1;
+	temp[x][y]=regionNum;
+	ArrayList<int[]> boarder = new ArrayList<int[]>();
+	int count=1;
+	int [] center = new int [2];
+	center [0]=x;
+	center [1]=y; 
+	boarder.add(center);
+	boolean done = false; 
+	while (!done){
+		done=true;
+		for(int i=0; i<boarder.size(); i++){
+			x=boarder.get(i)[0];
+			y=boarder.get(i)[1];
+			//color1 = new Color(array2D[x][y]);
+			//up
+			if(y>0){
+				if(temp[x][y-1]==0){
+
+					color2= new Color(array2D[x][y-1]);
+					if(abs(average-color2.getGreen())<threshhold){
+						//System.out.println("added: "+x+" "+(y-1));
+						int [] newBoarder = new int [2];
+						newBoarder [0]=x;
+						newBoarder [1]=y-1; 
+						boarder.add(newBoarder);
+						averageTotal+=color2.getGreen();
+						averageCount++;
+						average=averageTotal/averageCount;
+						temp[x][y-1]=regionNum;
+						if((y-1)<minmaxarray[1])
+							minmaxarray[1]=y-1;
+						if((y-1)>minmaxarray[3])
+							minmaxarray[3]=y-1;
+						if(x>minmaxarray[2])
+							minmaxarray[2]=x;
+						if(x<minmaxarray[0])
+							minmaxarray[0]=x;
+						count++;
+						done=false;
+
+					}
+				}
+
+			}
+			//down
+			if(y<image2.getHeight()-1){
+				if(temp[x][y+1]==0){
+					color2= new Color(array2D[x][y+1]);
+					if(abs(average-color2.getGreen())<threshhold){
+						//System.out.println("added: "+x+" "+(y+1));
+						int [] newBoarder = new int [2];
+						newBoarder [0]=x;
+						newBoarder [1]=y+1; 
+						boarder.add(newBoarder);
+						averageTotal+=color2.getGreen();
+						averageCount++;
+						average=averageTotal/averageCount;
+						temp[x][y+1]=regionNum;	
+						if((y+1)<minmaxarray[1])
+							minmaxarray[1]=y+1;
+						if((y+1)>minmaxarray[3])
+							minmaxarray[3]=y+1;
+						if(x>minmaxarray[2])
+							minmaxarray[2]=x;
+						if(x<minmaxarray[0])
+							minmaxarray[0]=x;
+						count++;
+						done=false;					
+
+					}
+				}
+			}
+			//left
+			if(x>0){
+				if(temp[x-1][y]==0){
+					color2= new Color(array2D[x-1][y]);
+					if(abs(average-color2.getGreen())<threshhold){
+						//System.out.println("added: "+(x-1)+" "+y);
+						int [] newBoarder = new int [2];
+						newBoarder [0]=x-1;
+						newBoarder [1]=y; 
+						boarder.add(newBoarder);
+						averageTotal+=color2.getGreen();
+						averageCount++;
+						average=averageTotal/averageCount;
+						temp[x-1][y]=regionNum;
+						if((y)<minmaxarray[1])
+							minmaxarray[1]=y;
+						if((y)>minmaxarray[3])
+							minmaxarray[3]=y;
+						if((x-1)>minmaxarray[2])
+							minmaxarray[2]=(x-1);
+						if((x-1)<minmaxarray[0])
+							minmaxarray[0]=(x-1);
+						count++;
+						done=false;
+					}
+				}
+			}
+			//right
+			if(x<image2.getWidth()-1){
+				if(temp[x+1][y]==0){
+					color2= new Color(array2D[x+1][y]);
+					if(abs(average-color2.getGreen())<threshhold){
+						//System.out.println("added: "+(x+1)+" "+y);
+						int [] newBoarder = new int [2];
+						newBoarder [0]=x+1;
+						newBoarder [1]=y; 
+						boarder.add(newBoarder);
+						averageTotal+=color2.getGreen();
+						averageCount++;
+						average=averageTotal/averageCount;
+						temp[x+1][y]=regionNum;
+						if((y)<minmaxarray[1])
+							minmaxarray[1]=y;
+						if((y)>minmaxarray[3])
+							minmaxarray[3]=y;
+						if((x+1)>minmaxarray[2])
+							minmaxarray[2]=(x+1);
+						if((x+1)<minmaxarray[0])
+							minmaxarray[0]=(x+1);
+						count++;
+						done=false;
+					}
+				}
+			}
+		} 
+
+	}
+
+	minmax.add(minmaxarray);
+	regionDensity.add(count);
+	if(count>3000&&average>150){
+			if(isBoxish(minmaxarray,1000,3.5,regionNum,count,2))
+		    	goodRegions.add(Boolean.TRUE);
+		    else 
+		    	goodRegions.add(Boolean.FALSE);
+		}
+	else
+	  	goodRegions.add(Boolean.FALSE);
+	
+	return count;
+}
+int max(int x, int y){
+	if(x>y)
+		return x;
+	else return y;
+}
+int min(int x, int y){
+	if(x<y)
+		return x;
+	else return y;
+}
+public boolean isBoxish(int[] minmaxarray,
+		 int deltaLength,double deltaRatio,
+		 int regionNum,int count, double countRatio){
+	int xdif,ydif;
+	boolean foreGround=true;
+	if(minmaxarray[0]<3
+		||minmaxarray[1]<3
+		||minmaxarray[2]>image2.getWidth()-4
+		||minmaxarray[3]>image2.getHeight()-4)
+			foreGround=false;
+	xdif=minmaxarray[2]-minmaxarray[0];
+	ydif=minmaxarray[3]-minmaxarray[1];
+	if(!foreGround)
+		return false;
+	int guessArea=xdif*ydif;
+	if(guessArea/count >countRatio)
+		return false;
+
+	if(abs(xdif-ydif)<deltaLength){
+		double ratio=max(xdif,ydif)/min(xdif,ydif);
+			if(ratio<deltaRatio)
+				return true;
+			else 
+				return false;
+	}
+	else 
+		return false;
+
+}
+public boolean isMostlyFilled(int[] minmaxarray, int regionNum, int area, int ratio){
+
+	return true;
+}
+public boolean onEdge(int [][]temp, int x,int y,int regionNum,boolean four, Color color){
+	//System.out.println(x + "  "+y);
+	int w = image2.getWidth()-1;
+	int h=image2.getHeight()-1;
+	if(x<w&&temp[x+1][y]==regionNum){
+		color= new Color (array2D[x+1][y]);
+		return true; 
+	}
+	if(x>0&&temp[x-1][y]==regionNum){
+		color = new Color(array2D[x-1][y]);
+		return true; 
+	}
+	if(y<h&&temp[x][y+1]==regionNum){
+		color = new Color(array2D[x][y+1]);
+		return true; 
+	}
+	if(y>0&&temp[x][y-1]==regionNum){
+		color = new Color(array2D[x][y-1]);
+		return true; 
+	}
+	return false;
 }
 public void getBMPImage(String BMPFileName) throws IOException {
 	//stolen from http://stackoverflow.com/questions/17015340/how-to-read-a-bmp-file-identify-which-pixels-are-black-in-java
@@ -196,7 +861,35 @@ public void undo(){
 	}
 
 }
+public void resize(){
+	image2=createResizedCopy(image2,image2.getWidth()/2, image2.getHeight()/2,true);
+    array2D = new int[image2.getWidth()][image2.getHeight()]; //*
 
+	    for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+	    {
+	        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+	        {
+	            int color = image2.getRGB(xPixel, yPixel); //*
+	            array2D[xPixel][yPixel] = color;
+
+	        }
+	    }
+}
+BufferedImage createResizedCopy(Image originalImage, 
+    		int scaledWidth, int scaledHeight, 
+    		boolean preserveAlpha)
+    {
+    	System.out.println("resizing...");
+    	int imageType = preserveAlpha ? BufferedImage.TYPE_INT_RGB : BufferedImage.TYPE_INT_ARGB;
+    	BufferedImage scaledBI = new BufferedImage(scaledWidth, scaledHeight, imageType);
+    	Graphics2D g = scaledBI.createGraphics();
+    	if (preserveAlpha) {
+    		g.setComposite(AlphaComposite.Src);
+    	}
+    	g.drawImage(originalImage, 0, 0, scaledWidth, scaledHeight, null); 
+    	g.dispose();
+    	return scaledBI;
+    }
 public void revertToOriginal(){
 	try{
 	 		  		 		  			getBMPImage(filename);
@@ -204,6 +897,17 @@ public void revertToOriginal(){
 	 		  		 		  		}
 	 		  		 		  		catch(IOException e){};
 	 		  			image2 = new BufferedImage(image.getWidth(),image.getHeight(),  image.getType());
+	 		  		 array2D = new int[image.getWidth()][image.getHeight()]; //*
+
+				    for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+				    {
+				        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+				        {
+				            int color = image.getRGB(xPixel, yPixel); //*
+				            array2D[xPixel][yPixel] = color;
+
+				        }
+				    }
 }
 
 public Color getBW(int val){
@@ -216,16 +920,15 @@ public Color getBW(int val){
 public void increaseContrast(int center, int degree){
 	Color color;
 	int range =5;
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		    {
-		        for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+		        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 		        {
 		        	color= new Color(array2D[xPixel][yPixel]);
 		        	if (color.getGreen()<(center-5)){
 		        		color=getBW(color.getGreen()-degree);
 
 		   				array2D[xPixel][yPixel]=color.getRGB();
-
 		        	}
 		        	else if(color.getGreen()>(center+5)){
 		        		color=getBW(color.getGreen()+degree);
@@ -240,9 +943,9 @@ public void increaseContrast(int center, int degree){
 public void decreaseContrast(int center, int degree){
 	Color color;
 	int range =5;
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		    {
-		        for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+		        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 		        {
 		        	color= new Color(array2D[xPixel][yPixel]);
 		        	if (color.getGreen()<(center-5)){
@@ -266,16 +969,63 @@ public int getArrayColor(int x, int y){
 }
 public void detectEdgeKirsch(int delta){
 	int[][] temp;
-    temp = new int[image.getWidth()][image.getHeight()]; //*
+    temp = new int[image2.getWidth()][image2.getHeight()]; //*
 
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	    for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 	        	temp[xPixel][yPixel] = getBW(getEdgeElement(xPixel,yPixel,delta)).getRGB(); 
 	        }
 	    }
 	array2D=copyArray2D(temp);
+}
+public int[][] getKirschArray(int delta){
+	int[][] temp;
+    temp = new int[image2.getWidth()][image2.getHeight()]; //*
+
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+	    {
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+	        {
+	        	temp[xPixel][yPixel] = getBW(getEdgeElement(xPixel,yPixel,delta)).getRGB(); 
+	        }
+	    }
+	return temp;
+}
+public void overlayEdges(int delta){
+	int[][] kirsch=copyArray2D(getKirschArray(delta));
+	int[][] temp = copyArray2D(array2D);
+	int edge = getBW(0).getRGB();
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+	    {
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+	        {
+	        	if(kirsch[xPixel][yPixel]==edge)
+	        		temp[xPixel][yPixel]=edge; 
+	        }
+	    }
+	array2D=copyArray2D(temp);
+}
+public void overlayThinnedEdges(int delta){
+	int[][] temp = copyArray2D(array2D);
+	int[][] kirsch=copyArray2D(getThinnedKirsch(delta));
+	//revertToOriginal();
+	int edge = getBW(0).getRGB();
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+	    {
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+	        {
+	        	if(kirsch[xPixel][yPixel]==edge)
+	        		temp[xPixel][yPixel]=edge; 
+	        }
+	    }
+	array2D=copyArray2D(temp);
+}
+public int[][] getThinnedKirsch(int delta){
+	detectEdgeKirsch(delta);
+	thin();
+	return array2D;
 }
 
 public int getEdgeElement(int x, int y, int delta){
@@ -307,20 +1057,23 @@ public void ReduceNoise(int threshhold){
 	int[][] box= new int[3][3];
 	int newVal;
 	Color color;
-	
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+
+	int[][] temp=copyArray2D(array2D);
+
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		{
-		for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+		for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 			        {
 						box=getBox(xPixel, yPixel);
 						if(countNeighbors(box)<threshhold){
 							newVal=255;
 							color=getBW(newVal);
-							array2D[xPixel][yPixel]=color.getRGB();
+							temp[xPixel][yPixel]=color.getRGB();
 						}
 
 			        }
 			    }
+	array2D=copyArray2D(temp);
 
 }
 public int countNeighbors(int [][] box){
@@ -338,21 +1091,22 @@ public void detectEdgeLaplacian(int delta,int mode){
 	int[][] box= new int[3][3];
 	int newVal;
 	Color color;
-	
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	int [][]temp=copyArray2D(array2D);
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		{
-		for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+		for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 			        {
 						box=getBox(xPixel, yPixel);
 						if(abs(convolution(box,filter))<delta)
-							newVal=0;
-						else 
 							newVal=255;
+						else 
+							newVal=0;
 						color=getBW(newVal);
-						array2D[xPixel][yPixel]=color.getRGB();
+						temp[xPixel][yPixel]=color.getRGB();
 
 			        }
 			    }
+	array2D=copyArray2D(temp);
 
 }
 public void smoothMed(){
@@ -361,17 +1115,18 @@ public void smoothMed(){
 	int[][] box= new int[3][3];
 	int median;
 
-		for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+		for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 			    {
-			        for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+			        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 			        {
 						box=getBox(xPixel, yPixel);
 						median=calcMedianBox(box);
 						color=getBW(median);
-						array2D[xPixel][yPixel]=color.getRGB();
+						temp[xPixel][yPixel]=color.getRGB();
 
 			        }
 			    }
+	array2D=copyArray2D(temp);	 
 }
 public double[][] getLaplacianFilter(int mode){
 	double[][] filter = new double[3][3];
@@ -402,24 +1157,103 @@ public double[][] getLaplacianFilter(int mode){
 	}
 	return filter;
 }
+public void Fill(){
+	int [][] box = new int [3][3];
+	int [][] temp= copyArray2D(array2D);
+
+		for (int xPixel = 1; xPixel < image2.getWidth()-1; xPixel++) //*
+		{
+		for (int yPixel = 1; yPixel < image2.getHeight()-1; yPixel++) //*
+			        {
+						box=getBox(xPixel, yPixel);
+						if(box[1][1]<255){
+							temp[xPixel+1][yPixel+1]=getBW(0).getRGB();
+
+							temp[xPixel][yPixel+1]=getBW(0).getRGB();
+
+							temp[xPixel-1][yPixel+1]=getBW(0).getRGB();
+
+							temp[xPixel+1][yPixel]=getBW(0).getRGB();
+
+							temp[xPixel-1][yPixel]=getBW(0).getRGB();
+
+							temp[xPixel+1][yPixel-1]=getBW(0).getRGB();
+
+							temp[xPixel][yPixel-1]=getBW(0).getRGB();
+
+							temp[xPixel-1][yPixel-1]=getBW(0).getRGB();
+
+						}
+
+			        }
+			    }
+	array2D=copyArray2D(temp);
+
+
+}
+public void smartFill(){
+	int [][] box = new int [3][3];
+	int [][] temp= copyArray2D(array2D);
+
+		for (int xPixel = 1; xPixel < image2.getWidth()-1; xPixel++) //*
+		{
+		for (int yPixel = 1; yPixel < image2.getHeight()-1; yPixel++) //*
+			        {
+						box=getBox(xPixel, yPixel);
+						if(box[1][1]<255){
+							if(box[0][0]<255){
+							temp[xPixel+1][yPixel+1]=getBW(0).getRGB();
+							}
+							if(box[0][1]<255){
+							temp[xPixel][yPixel+1]=getBW(0).getRGB();
+							}
+							if(box[0][2]<255){
+							temp[xPixel-1][yPixel+1]=getBW(0).getRGB();
+							}
+							if(box[1][0]<255){
+							temp[xPixel+1][yPixel]=getBW(0).getRGB();
+							}
+							if(box[1][2]<255){
+							temp[xPixel-1][yPixel]=getBW(0).getRGB();
+							}
+							if(box[2][0]<255){
+							temp[xPixel+1][yPixel-1]=getBW(0).getRGB();
+							}
+							if(box[2][1]<255){
+							temp[xPixel][yPixel-1]=getBW(0).getRGB();
+							}
+							if(box[2][2]<255){
+							temp[xPixel-1][yPixel-1]=getBW(0).getRGB();
+							}
+
+						}
+
+			        }
+			    }
+	array2D=copyArray2D(temp);
+
+}
 public void sharpenLaplacian(int mode){
 	double sum;
 	double[][] filter = getLaplacianFilter(mode);
 	int[][] box= new int[3][3];
 	int newVal;
 	Color color;
-	
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	int [][] temp= copyArray2D(array2D);
+
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		{
-		for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+		for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 			        {
 						box=getBox(xPixel, yPixel);
 						newVal=convolution(box,filter);
-						color=getBW(newVal);
-						array2D[xPixel][yPixel]=color.getRGB();
-
+						if(newVal>7){
+							color=getBW(0);
+							temp[xPixel][yPixel]=color.getRGB();
+						}
 			        }
 			    }
+	array2D=copyArray2D(temp);
 
 }
 public int convolution (int [][] box, double [][] filter){
@@ -427,18 +1261,21 @@ public int convolution (int [][] box, double [][] filter){
 	for(int i=0; i<3; i++)
 		for(int j=0; j<3; j++)
 			sum+=(int)((double)box[i][j]*filter[i][j]);
-
+		if(sum<0)
+			return (0-sum);
 		return sum;
 
 }
 public void sharpenHistoEq(){
 	int[] H = new int [256];
+	int [][] temp= copyArray2D(array2D);
+
 		for(int i=0; i<256; i++){
 			H[i]=0;
 		}
-		for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+		for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		  {
-			 for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+			 for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 			 {
 			 	H[getArrayColor(xPixel,yPixel)]++; //fill histogram
 			 }
@@ -450,18 +1287,20 @@ public void sharpenHistoEq(){
 	printHisto(H);
 
 	for(int i=0; i<256; i++)
-		H[i]=(int)((double)H[i]*(((double)255)/((double)(image.getWidth()*image.getHeight())))); //normalize
+		H[i]=(int)((double)H[i]*(((double)255)/((double)(image2.getWidth()*image2.getHeight())))); //normalize
 	
 	printHisto(H);
 
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		  {
-			 for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+			 for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 			 {
-				array2D[xPixel][yPixel]=getBW(H[getArrayColor(xPixel,yPixel)]).getRGB(); //fill histogram
+				temp[xPixel][yPixel]=getBW(H[getArrayColor(xPixel,yPixel)]).getRGB(); //fill histogram
 			 }
 
 		}
+	array2D= copyArray2D(temp);
+
 }
 public void printHisto(int [] hist){
 	for (int i=0; i<256; i++)
@@ -475,9 +1314,9 @@ public void smoothAve(boolean gaussian){
 	int[][] box= new int[3][3];
 	int average;
 
-		for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+		for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 			    {
-			        for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+			        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 			        {
 						box=getBox(xPixel, yPixel);
 						if(gaussian)
@@ -485,10 +1324,11 @@ public void smoothAve(boolean gaussian){
 						else 
 							average=getBoxAve(box);
 						color=getBW(average);
-						array2D[xPixel][yPixel]=color.getRGB();
+						temp[xPixel][yPixel]=color.getRGB();
 
 			        }
 			    }
+	array2D=copyArray2D(temp);
 }
 
 //approximate median algorithm https://web.cs.wpi.edu/~hofri/medsel.pdf
@@ -596,28 +1436,28 @@ public int [][] getBox(int x, int y){
 			if(y-1>=0)
 				box[0][0]= getArrayColor(x-1, y-1);//array2D[x-1][y-1];
 			box[0][1]= getArrayColor(x-1, y);//array2D[x-1][y];
-			if(y+1<image.getHeight())
+			if(y+1<image2.getHeight())
 				box[0][2]= getArrayColor(x-1, y+1);//array2D[x-1][y+1];
 			}
 	if(y-1>=0)		
 		box[1][0]= getArrayColor(x, y-1);//array2D[x][y-1];
 	box[1][1]= getArrayColor(x, y);//array2D[x][y];
-	if(y+1<image.getHeight())
+	if(y+1<image2.getHeight())
 		box[1][2]= getArrayColor(x, y+1);//array2D[x][y+1];
-	if(x+1<image.getWidth()){
+	if(x+1<image2.getWidth()){
 		if(y-1>=0)
 			box[2][0]= getArrayColor(x+1, y-1);//array2D[x+1][y-1];
 		box[2][1]= getArrayColor(x+1, y);//array2D[x+1][y];
-		if(y+1<image.getHeight())
+		if(y+1<image2.getHeight())
 			box[2][2]= getArrayColor(x+1, y+1);//array2D[x+1][y+1];
 	}
 	return box;
 }
 public void darkenArrayImage(){
 	Color color;
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		    {
-		        for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+		        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 		        {
 		        	color= new Color(array2D[xPixel][yPixel]);
 		        	color=color.darker();
@@ -626,11 +1466,30 @@ public void darkenArrayImage(){
 		    }
 
 }
+public void invertColor(){
+	Color color;
+	int[][] temp;
+    temp = new int[image2.getWidth()][image2.getHeight()];
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+		    {
+		        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+		        {
+		        	color= new Color(array2D[xPixel][yPixel]);
+		        	if(color.getGreen()<100)
+		        		temp[xPixel][yPixel]=getBW(255).getRGB();
+
+		        	else 
+		        		temp[xPixel][yPixel]=getBW(0).getRGB();
+
+		        }
+		    }
+array2D=copyArray2D(temp);
+}
 public void lightenArrayImage(){
 	Color color;
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 		    {
-		        for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+		        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 		        {
 		        	color= new Color(array2D[xPixel][yPixel]);
 		        	color=color.brighter();
@@ -657,10 +1516,58 @@ public void save(){
 		} catch (IOException e) {}
 
 }
+
+public void cycle(){
+	String outputFileName;
+	imageCycle++;
+	if(imageCycle>7)
+		imageCycle=1;
+	filename="im"+imageCycle+"-c.bmp";
+		try{
+	 		 	getBMPImage(filename);
+	 		  		
+	 		  		 		  		}
+	 		  		 		  		catch(IOException e){};
+	 		  			image2 = new BufferedImage(image.getWidth(),image.getHeight(),  image.getType());
+	 		  		 array2D = new int[image.getWidth()][image.getHeight()]; //*
+
+				    for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+				    {
+				        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+				        {
+				            int color = image.getRGB(xPixel, yPixel); //*
+				            array2D[xPixel][yPixel] = color;
+
+				        }
+				    }
+}
+public void open(){
+	Scanner scan = new Scanner(System.in);
+	String outputFileName;
+	System.out.println("file name:");
+	filename=scan.nextLine();
+		try{
+	 		 	getBMPImage(filename);
+	 		  		
+	 		  		 		  		}
+	 		  		 		  		catch(IOException e){};
+	 		  			image2 = new BufferedImage(image.getWidth(),image.getHeight(),  image.getType());
+	 		  		 array2D = new int[image.getWidth()][image.getHeight()]; //*
+
+				    for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+				    {
+				        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+				        {
+				            int color = image.getRGB(xPixel, yPixel); //*
+				            array2D[xPixel][yPixel] = color;
+
+				        }
+				    }
+}
 public void drawArrayImage(){
-	   for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	   for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	        for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 	            image2.setRGB(xPixel,yPixel,array2D[xPixel][yPixel]);
 
@@ -669,29 +1576,86 @@ public void drawArrayImage(){
 }
 public void paint(Graphics g){
 	if(ready){
-
+		 if(regionsCalculated){
+		 	drawRegions();
+		 	// for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+			 //    {
+			 //    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+			 //        {
+			        	
+			 //        	System.out.print(regions[xPixel][yPixel]);
+			        		
+			        	
+			 //        }
+			 //    }
+		 	regionsCalculated=false;
+		 }
 		 g.drawImage(image2, 0, 0, null);
+		 if(huff){
+		 	g.setColor(Color.RED);
+		 	drawHuffLines(g,200);
+		 	huff=false;
+		 }
+		 drawRegionNumbers(g);
 		 System.out.println("image printed");
 
 
 	}
 
 }
-public void thin(){
-	int [] [] F = new int[image.getWidth()][image.getHeight()]; //*
+public void drawRegionNumbers(Graphics g){
+	g.setColor(Color.RED);
+	for(int i=0; i<numRegions; i++)
+		if(goodRegions.get(i)){
+	 		g.setFont(new Font("TimesRoman", Font.PLAIN, 20));
+			g.drawString("BOX IS HERE", (int)((minmax.get(i)[0]+minmax.get(i)[2])/2)-50, (int)((minmax.get(i)[1]+minmax.get(i)[3])/2));
+			g.drawRect(minmax.get(i)[0]-(minmax.get(i)[2]-minmax.get(i)[0])/2,minmax.get(i)[1]-(minmax.get(i)[3]-minmax.get(i)[1])/2,(minmax.get(i)[2]-minmax.get(i)[0])*2,(minmax.get(i)[3]-minmax.get(i)[1])*2);
+		}
+}
+public void drawRegions(){
+	Color color; 
+	Random rand = new Random();
+	float r,g,b;
+	for(int i=0; i<numRegions; i++){
+		if(!goodRegions.get(i))
+			continue;
+		r=rand.nextFloat(); g=rand.nextFloat(); b=rand.nextFloat();
+	   	color=Color.GREEN;
+	    //color=new Color(r,g,b);
+	    if(i%10000==0)
+	    	System.out.println("drawing region: " +i);
 
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	  for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	    for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	        for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
+	        {	
+	         
+	        	if(regions[xPixel][yPixel]==i){
+	        		// System.out.println("set color ");
+
+	           	 	image2.setRGB(xPixel,yPixel,color.getRGB());
+	        	}
+
+	        }
+	    }
+	}
+
+}
+public void thin(){
+	int [] [] F = new int[image2.getWidth()][image2.getHeight()]; //*
+
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
+	    {
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 	        	F[xPixel][yPixel] = getBW(255).getRGB(); 
 	        }
 	    } 
 	int [][] I= array2D;
-	int [][] C=new int[image.getWidth()][image.getHeight()];
+	int [][] C=new int[image2.getWidth()][image2.getHeight()];
 	int i=0;
 	int counter=0;
-	while (counter<30){
+	while (counter<5){
 		addFinals(F,I,i);
 		if(equals(F,I))break;
 		calcContour(C, I, i);
@@ -708,9 +1672,9 @@ public void thin(){
 public void calcNewImage(int [][] I, int [][] C, int [][] F){
 	Color color;
 	int i,c,f;
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	    for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 	        	i=getArrayColor(xPixel, yPixel);
 	        	c= new Color(C[xPixel][yPixel]).getGreen();
@@ -729,9 +1693,9 @@ public void calcNewImage(int [][] I, int [][] C, int [][] F){
 public void addFinals(int[][] F, int [][] I, int i){
 	int [][] box;
 	Color color;
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	    for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 	        	box = getBox(xPixel,yPixel);
 	        	if(isfinalBi(box,i)){
@@ -793,9 +1757,9 @@ public boolean isContouri(int [][] box, int i){
 
 }
 public boolean equals(int[][] A, int [][] B){
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	    for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 
 	        	if(A[xPixel][yPixel]!=B[xPixel][yPixel])
@@ -810,9 +1774,9 @@ public boolean equals(int[][] A, int [][] B){
 public void calcContour(int [][] C, int [][] I, int i){
 	int [][] box;
 	Color color;
-	for (int xPixel = 0; xPixel < image.getWidth(); xPixel++) //*
+	for (int xPixel = 0; xPixel < image2.getWidth(); xPixel++) //*
 	    {
-	    for (int yPixel = 0; yPixel < image.getHeight(); yPixel++) //*
+	    for (int yPixel = 0; yPixel < image2.getHeight(); yPixel++) //*
 	        {
 	        	box = getBox(xPixel,yPixel);
 	        	if(isContouri(box,i))
@@ -825,5 +1789,92 @@ public void calcContour(int [][] C, int [][] I, int i){
 	    } 
 }
 
+public void HoughTransform(){
+	Color color;
+	int h = image2.getHeight();
+	int w = image2.getWidth();
+	int val;
+	double r;
+	int theta;
+	double hough_h = ((Math.sqrt(2.0)*((double)(h>w?h:w)))/2);
+	int acc_width = (int)(hough_h * 2.0)+1;
+	double center_x=w/2;
+	double center_y = h/2;
+	int [][] accumulator = new int[180][acc_width];
+
+	for (int xPixel = 0; xPixel < w; xPixel++) //*
+	    {
+	    for (int yPixel = 0; yPixel < h; yPixel++) //*
+	        {
+	        	color = new Color(array2D[xPixel][yPixel]);
+	        	val = color.getGreen();
+	        	//http://www.keymolen.com/2013/05/hough-transformation-c-implementation.html
+	        	//r=xcos(theta)+ysin(theta);
+	        	//theta from 0 to 180
+	        	//solve for r for each edge element
+	        	if(val<5){
+	        		for(theta = 0 ; theta < 180; theta ++ ){
+	        			r=hough_h+((double)xPixel-center_x)*Math.cos(theta*Math.PI/180)
+	        				+((double)yPixel-center_y)*Math.sin(theta*Math.PI/180);
+	        	//System.out.println(r);
+	        			accumulator[theta][(int)r]++;
+	        		}
+	        	}
+
+	        }
+	    }
+	huffAccumulator=accumulator;
+	huff=true;
+}
+public void drawHuffLines(Graphics g, int threshhold){
+	Color color;
+	int h = image2.getHeight();
+	int w = image2.getWidth();
+	
+	int val;
+	int r;
+	int theta;
+	double hough_h = (((Math.sqrt(2.0))*((double)(h>w?h:w)))/2);
+	int acc_width = (int)(hough_h * 2.0)+1;
+	/*for(theta = 0; theta < 180; theta ++){
+		for(r = 0; r< acc_width; r++){
+			System.out.print(huffAccumulator[theta][r]
+			+" ");
+	
+		}
+		System.out.println("\n\nendline\n\n");
+	}*/
+	for(theta = 0; theta < 180; theta ++){
+		for(r = 0; r< acc_width; r++){
+			if(huffAccumulator[theta][r]>threshhold)
+				drawRThetaLine((int)(r),theta,g, acc_width);
+		}
+	}
+}
+public void drawRThetaLine(int r, int theta, Graphics g,int acc_width){
+	double x1,y1,x2,y2; 
+	int h = image2.getHeight();
+	int w = image2.getWidth();
+	double center_x=w/2;
+	double center_y = h/2;
+	//find x,y by going in the perpendicular direction from the rtheta direction
+	if(theta>=45&&theta<=135){
+			x1 = 0; 
+			x2 = w;
+			//y=(r-xcos(theta))/sin(theta)
+			y1=((double)(r-(acc_width/2))-(x1-center_x)*Math.cos(theta*(Math.PI/180)))/Math.sin(theta*(Math.PI/180))+center_y;
+			y2=((double)(r-(acc_width/2))-(x2-center_x)*Math.cos(theta*(Math.PI/180)))/Math.sin(theta*(Math.PI/180))+center_y;
+			g.drawLine((int)x1,(int)y1, (int)x2, (int)y2);
+	}
+	else {
+			y1 = 0; 
+			y2 = h;
+			//x = (r - y sin(t)) / cos(t);  
+			x1=((double)(r-(acc_width/2))-(y1-center_y)*Math.sin(theta*(Math.PI/180)))/Math.cos(theta*(Math.PI/180))+center_x;
+			x2=((double)(r-(acc_width/2))-(y2-center_y)*Math.sin(theta*(Math.PI/180)))/Math.cos(theta*(Math.PI/180))+center_x;
+			g.drawLine((int)x1,(int)y1, (int)x2, (int)y2);
+
+	}
+}
 
 }
